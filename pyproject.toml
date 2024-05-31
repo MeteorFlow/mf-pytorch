@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mf_pytorch"
+version = "0.0.1"
+authors = [
+    { name = "Thuy Nguyen", email = 'thuy.nguyenduc02@hcmut.edu.vn' },
+    { name = "Kiet Tran", email = "kiet.trank1netic@hcmut.edu.vn" },
+]
+dependencies = ["numpy", "torch", "boto3"]
