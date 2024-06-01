@@ -1,11 +1,13 @@
 import dataclasses
 import functools
 import io
+from typing import Iterable
 
 import boto3
 import boto3.s3
-import torch
 import numpy
+import pendulum
+import torch
 from torch.utils.data import Dataset
 
 
@@ -50,12 +52,16 @@ class MeteorFlowDataset(Dataset):
         s3_access_key: str,
         s3_secret_key: str,
         region: str,
-        date_time_range: DateTimeRage,
         features: list[str],
+        date_time_range: DateTimeRage | None = None,
+        start_date_time: pendulum.DateTime | None = None,
+        end_date_time: pendulum.DateTime | None = None,
     ):
         self.region = region
-        self.date_time_range = date_time_range
         self.features = features
+        self.date_time_range = date_time_range
+        self.start_date_time = start_date_time
+        self.end_date_time = end_date_time
 
         s3_client = boto3.resource(
             service_name="s3",
@@ -74,7 +80,7 @@ class MeteorFlowDataset(Dataset):
             idx = idx.tolist()
 
         object_to_fetch = self._get_file_names()[idx]
-        object = self.s3_bucket.Object(object_to_fetch.key)
+        object = self.s3_bucket.Object(object_to_fetch)
 
         download_stream = io.BytesIO()
         object.download_fileobj(download_stream)
@@ -86,9 +92,29 @@ class MeteorFlowDataset(Dataset):
 
     @functools.cache
     def _get_file_names(self) -> list[str]:
-        object_prefix = self.date_time_range.get_file_prefix()
-        objects_iter = self.s3_bucket.objects.filter(
-            Prefix=f"{self.features[0]}/{object_prefix}"
-        )
+        if self.date_time_range:
+            object_prefix = self.date_time_range.get_file_prefix()
+            objects_iter = self.s3_bucket.objects.filter(
+                Prefix=f"{self.features[0]}/{object_prefix}"
+            )
 
-        return list(objects_iter)
+            return list(map(lambda object_summary: object_summary.key, objects_iter))
+        else:
+            all_keys = self._get_all_keys()
+
+            if self.start_date_time:
+                start_date_format = self.start_date_time.format("[reflectivity]/YYYYMMDDTHHmmssZ")
+                valid_keys = filter(lambda keys: keys >= start_date_format, all_keys)
+
+            if self.end_date_time:
+                end_date_format = self.end_date_time.format("[reflectivity]/YYYYMMDDTHHmmssZ")
+                valid_keys = filter(lambda keys: keys <= end_date_format, valid_keys)
+
+            return list(valid_keys)
+
+    @functools.cache
+    def _get_all_keys(self) -> Iterable[str]:
+        return map(
+            lambda object_summary: object_summary.key,
+            self.s3_bucket.objects.filter(Prefix=f"{self.features[0]}/"),
+        )
